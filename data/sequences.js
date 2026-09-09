@@ -1,122 +1,122 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// SECUENCIAS DE MENSAJES — PulsetrackSDRV2
-// Vertical inicial: profesionales de la salud independientes y clínicas estéticas
-// (pensado para poder adaptar el mismo esqueleto a otros nichos más adelante)
+// SECUENCIAS DE MENSAJES — PulsetrackSDRV2 · AI SDR "Valentina"
+// Vertical: Clínicas Estéticas LATAM (Argentina, Paraguay, México)
+// Basado en: Pulsetrack_AI_SDR_Clinicas_Esteticas_v1.md (documento aprobado)
 //
-// ⚠️ BORRADOR — este copy NO está aprobado. No lanzar campaña real sin que
-// Brian revise y apruebe el texto final de cada mensaje. No modificar el
-// posicionamiento (agentes de IA que automatizan atención y ventas, en
-// general — no solo "gestión de turnos") sin su aprobación.
+// REGLA DE ORO: la recepción/atención al cliente (Etapa 1) NUNCA se entera de
+// que Valentina es un agente de IA — se posiciona como servicio que le saca
+// carga de encima, no que la reemplaza. El disclosure de IA es EXCLUSIVO de
+// la directora/DM en Etapa 2. No mezclar el copy de una etapa con la otra.
+//
+// ⚠️ Este archivo refleja el documento aprobado por Brian. Cualquier cambio
+// de copy tiene que actualizarse primero ahí, y si afecta al Mensaje 1
+// (FASE0_APERTURA) hay que re-aprobar el template en Meta.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// FASE 0 — Mensaje 1: apertura para activar humano (rompe bots/auto-respuestas)
-// ⚠️ Este texto tiene que coincidir EXACTO con el template aprobado en Meta
-// (KAPSO_TEMPLATE_NAME) — si lo cambiás acá, hay que volver a aprobar el template.
-export const FASE0_APERTURA = `Hola, qué tal? Quería hacer una consulta rápida, ¿tiene un minuto?`;
-
-// Respuesta vaga si responde un bot con menú automático (para escalar a humano)
-export const FASE0_BOT_REPLY = `Quería consultar algo puntual sobre la atención de pacientes/leads del centro`;
-
-// FASE 1 — Mensaje 2: identificación + pedido de contacto al DM
-// Se envía SOLO después de que un humano respondió a FASE0
-export const FASE1_INICIAL = (pais) => {
-  const nombre = process.env.SDR_NAME || 'Brian';
-  return `Hola, buen día. 👋
-Soy ${nombre}, de Pulsetrack. Ayudamos a profesionales y clínicas de salud a automatizar la atención y el seguimiento de pacientes con agentes de IA por WhatsApp, para que no se pierda ni un paciente interesado por falta de respuesta a tiempo.
-En la mayoría de los centros con los que trabajamos, una parte importante de los leads/consultas se pierde por no llegar a responder rápido o no hacer seguimiento.
-¿Me podrías conectar con el director o la persona que maneja la operación del centro? Quiero mostrarle algo concreto en 20 minutos.`;
-};
+const AGENTE_NOMBRE = 'Valentina';
+const WEB_PULSETRACK = 'getpulsetrack.com';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FASE 2 — Conversación con recepción/portero
+// ETAPA 1 — Recepción / Atención al Cliente (número público de la clínica)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Mensaje 2B — Follow-up (solo si no responde en 24hs al Mensaje 2)
-export const FASE2_FOLLOWUP = `Hola, quería saber si pudieron ver mi mensaje de ayer 😊
-¿Hay posibilidad de contactar al director o encargado?`;
+// Mensaje 1 — apertura para activar humano (rompe bots/auto-respuestas)
+// ⚠️ Tiene que coincidir EXACTO con el template aprobado en Meta (KAPSO_TEMPLATE_NAME)
+export const FASE0_APERTURA = `Hola! Buen día ¿cómo estás? Quería hacer una consulta rápida`;
 
-// Bifurcaciones del portero (3A–3F)
+// Respuesta vaga si contesta un bot con menú automático (para escalar a humano)
+export const FASE0_BOT_REPLY = `Quería consultar algo puntual sobre la atención de pacientes de la clínica`;
+
+// Mensaje 2 — identificación + pedido a la DM (SIN mención de IA/automatización)
+export const FASE1_INICIAL = (pais) =>
+`Un gusto! Mi nombre es ${AGENTE_NOMBRE}, soy del equipo de Pulsetrack. Trabajamos con clínicas estéticas de la región ayudando a reducir las inasistencias y mejorar la atención a pacientes por WhatsApp. Quería comunicarme con la directora o encargada de la clínica para contarle brevemente sobre los resultados que estamos viendo con otras clínicas en ${pais}. ¿Me podrías ayudar a contactarla?`;
+
+// Mensaje 2B — Follow-up (solo si no responde en 24hs al Mensaje 2, se envía una sola vez)
+export const FASE2_FOLLOWUP = `Hola, quería saber si pudiste ver mi mensaje de ayer 😊 ¿Hay posibilidad de contactar a la directora o encargada?`;
+
+// Bifurcaciones de recepción (3A–3F)
 export const FASE2_OBJECIONES = {
-  // 3A — "¿De qué se trata?" / "¿Qué resultados?"
+  // 3A — "¿de qué se trata?" / "¿qué resultados?"
   que_se_trata: (pais) =>
-`Claro, te comento. Trabajamos con profesionales y clínicas de salud en ${pais} automatizando la atención y las ventas con agentes de IA — para que ninguna consulta ni paciente interesado se pierda por falta de respuesta o seguimiento a tiempo, con atención disponible 24/7.
-Para ver si aplica a su operación necesito hablar con quien maneja la clínica o el área de atención. ¿Me podés pasar su contacto?`,
+`Claro, te cuento! Trabajamos con clínicas estéticas en ${pais} y lo que más logran es que las pacientes reciban seguimiento automático antes de su turno, así bajan mucho las inasistencias de último momento. Para ver si aplica a la clínica necesito hablarlo con quien maneja la dirección o administración. ¿Me podés pasar su contacto?`,
 
-  // 3B — portero se ofrece como interlocutor → calificar si es decisor
+  // 3B — se ofrece como interlocutora → calificar si tiene poder de decisión
   calificar_portero: () =>
-`Perfecto, antes de contarte — ¿vos liderás el área de atención al paciente o procesos de la clínica?`,
+`Perfecto! Antes de contarte, ¿vos estás a cargo de la dirección de la clínica o de las decisiones sobre las herramientas que usan para atención a pacientes?`,
 
-  // 3B-no — no es decisor
+  // 3B → confirma que SÍ es decisora: transición corta antes de arrancar Etapa 2 (MSG 1B)
+  confirma_es_dm: () => `Perfecto, entonces te cuento directamente a vos 👇`,
+
+  // 3B → NO es decisora
   no_es_decisor: () =>
-`Gracias por la disposición. El tema requiere una conversación un poco más estratégica, así que necesito hablarlo con quien toma ese tipo de decisiones. ¿Podrías pasarme el contacto del director o encargado?`,
+`Gracias por la buena onda! El tema es un poco más de gestión/estratégico, así que necesito hablarlo con la directora o encargada. ¿Me podrías pasar su contacto?`,
 
-  // 3C — "mandame la información y yo la paso"
+  // 3C — "mandame la info y yo la paso"
   mandame_info: (pais) =>
-`¡Claro, con gusto! 😊
-Somos Pulsetrack, ayudamos a profesionales y clínicas de salud en ${pais} a automatizar la atención y las ventas con agentes de IA — el sistema responde, califica y hace el seguimiento de pacientes/leads las 24hs, sin que el equipo tenga que intervenir.
-Ya lo están usando centros de la región y lo que más valoran es que dejaron de perder pacientes interesados por no llegar a responder a tiempo.
-Si podés comentárselo al director o encargado, sería genial. Y si me podés pasar su contacto directo, mejor todavía así le escribo yo y no te genero trabajo extra. ¿Cómo lo ves? 🙏`,
+`¡Buenísimo! Somos Pulsetrack, trabajamos con clínicas estéticas en ${pais} para que las pacientes tengan seguimiento automático y no se pierdan turnos por falta de recordatorio o de respuesta a tiempo. Ya lo están usando varias clínicas de la región, y lo que más valoran es que bajaron mucho las inasistencias. Si le podés comentar esto a la directora, estaría buenísimo. Y si me podés pasar su contacto directo, mejor todavía así no te genero trabajo extra a vos. ¿Cómo lo ves? 🙏`,
 
   // 3D — "no tenemos ese dato" / "no puedo darte ese contacto" (primer pedido: nombre)
   no_contacto: () =>
-`Entiendo perfectamente, no hay problema. ¿Sabrías al menos el nombre del director o responsable? Con eso ya me ayudás mucho.`,
+`Entiendo perfecto, no hay problema. ¿Sabrías al menos el nombre de la directora o encargada? Con eso ya me ayudás muchísimo.`,
 
-  // 3D — segundo pedido: LinkedIn o email
-  pide_linkedin_email: () =>
-`Gracias. ¿Tienen LinkedIn de la clínica o algún email de contacto donde pueda hacerle llegar el mensaje?`,
+  // 3D — segundo pedido: Instagram o email (canal preferente en este ICP)
+  pide_instagram_email: () =>
+`Gracias! ¿Tenés el Instagram de la clínica o algún mail de contacto donde pueda hacerle llegar el mensaje?`,
 
   // 3D — fallback final si no dan absolutamente nada
-  no_dan_nada: (pais) => {
-    const nombre = process.env.SDR_NAME || 'Brian';
-    return `Entiendo, gracias igual. Si pudiera hacerle llegar esto de mi parte le agradezco:
-"Hola, le escribe ${nombre} de Pulsetrack. Ayudamos a profesionales y clínicas de salud en ${pais} a automatizar la atención y el seguimiento con agentes de IA, para que ningún paciente interesado se pierda. Otros directores de la región nos pidieron 20 minutos y los resultados los sorprendieron. Si le interesa, con gusto lo contacto. ¡Gracias!"`;
-  },
+  no_dan_nada: (pais) =>
+`Entiendo, gracias igual. Si pudieras hacerle llegar esto de mi parte te agradezco: "Hola, te escribe ${AGENTE_NOMBRE} de Pulsetrack. Trabajamos con clínicas estéticas en ${pais} para reducir inasistencias y mejorar el seguimiento a pacientes. Otras directoras de la región nos dieron 20 minutos y les sorprendió el resultado. Si te interesa, con gusto te cuento. Gracias!"`,
 
-  // 3E — piden web o más información
+  // 3E — piden web, información o redes sociales
   piden_web: () =>
-`¡Claro! Pueden ver más en getpulsetrack.com 👇
-Ahí hay casos de uso y cómo funciona el sistema.
-Si le cierra la idea al director, con gusto le cuento en detalle. ¿Hay forma de contactarlo directamente?`,
+`Claro! Podés ver más en ${WEB_PULSETRACK} 👇 Ahí tenés casos de otras clínicas y cómo trabajamos. Si le llega a interesar a la directora, con gusto le cuento en detalle. ¿Hay forma de contactarla directamente?`,
 
-  // 3F — "ya tenemos ese servicio" / "no nos interesa" / "no lo necesitamos"
+  // 3F — "ya tenemos algo así" / "no nos interesa" / "no lo necesitamos"
   ya_tienen: () =>
-`Perfecto, con gusto lo tomo en cuenta.
-Igual me gustaría comentárselo al director o encargado, porque lo que hacemos tiene bastantes diferencias con lo que hay en el mercado y estoy seguro que notará el valor.
-¿Me podrías pasar su contacto? 🙏`,
+`Perfecto, lo tengo en cuenta. Igual me gustaría comentárselo a la directora, porque lo que hacemos tiene bastantes diferencias con lo que suele haber en el mercado y seguro le interesa comparar. ¿Me podrías pasar su contacto? 🙏`,
 
   // 3F — variante si insisten (segunda vez) → cierre limpio
   ya_tienen_insiste: () =>
-`Entendido, no hay problema. Si en algún momento el director quiere revisarlo, pueden escribirnos a getpulsetrack.com. ¡Que tengan buen día! 👋`,
+`Entendido, no hay problema. Si en algún momento la directora quiere revisarlo, puede escribirnos a ${WEB_PULSETRACK}. Que tengas buen día 👋`,
 
-  // Fallback genérico cuando la respuesta es ambigua
+  // Fallback genérico cuando la respuesta es ambigua (no está en el documento explícitamente,
+  // mantiene el mismo tono neutral de Etapa 1 sin mencionar IA)
   fallback_generico: () =>
-`Gracias por responder. Quería saber si me podrías ayudar a contactar con el director, dueño o responsable del centro.`,
+`Gracias por responder! ¿Me podrías ayudar a contactar con la directora o encargada de la clínica?`,
 };
 
-// Mensaje 4 — Cierre al portero cuando da el contacto del DM
-export const FASE2_CIERRE_PORTERO = `Muchísimas gracias, muy amable 🙏 Le escribo directamente entonces.`;
+// Mensaje 4 — cierre a recepción cuando da el contacto de la DM
+export const FASE2_CIERRE_PORTERO = `Muchísimas gracias, muy amable! 🙏 Le escribo directamente entonces.`;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ETAPA 2 — Apertura con el Decision Maker (DM)
+// ETAPA 2 — Apertura con la Directora / DM (acá SÍ hay disclosure completo de IA)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// MSG 1A — DM contactado con número nuevo (portero dio el contacto)
+// MSG 1A — DM contactada con número nuevo (recepción dio el contacto)
 export const FASE3_APERTURA = (dmName, pais) => {
   const usarNombre = dmName && dmName !== 'hola' && dmName !== 'te';
-  const saludo = usarNombre ? `Hola ${dmName}, buen día.` : `Hola, buen día.`;
-  return `${saludo}
-Me pasaron tu contacto desde el centro. Te cuento en dos líneas:
-Ayudamos a profesionales y clínicas de salud a automatizar la atención y las ventas con agentes de IA por WhatsApp — atención 24/7, sin sumar personal.
-Los centros con los que trabajamos dejaron de perder pacientes interesados por falta de respuesta o seguimiento a tiempo.
-¿Tienes 20 minutos esta semana para que te muestre cómo funciona en concreto?`;
+  const saludo = usarNombre ? `Buen día ${dmName}! 👋` : `Buen día! 👋`;
+  return `${saludo} Te escribo de parte de Pulsetrack, ${AGENTE_NOMBRE} es mi nombre — de hecho soy un agente de IA, je. Me contacté con tu clínica porque trabajamos con clínicas estéticas en ${pais} ayudando a reducir inasistencias y a que las pacientes reciban atención por WhatsApp sin que dependa de que alguien del equipo esté disponible 24/7. ¿Te cuento brevemente cómo lo hacemos?`;
 };
 
-// MSG 1B — el portero confirmó ser el DM (bifurcación 3B) — pitch directo en tuteo
+// MSG 1B — la recepcionista confirmó ser la DM (bifurcación 3B) — sigue la misma conversación
 export const FASE3_APERTURA_B = () =>
-`Buenísimo. Lo que hacemos es básicamente asegurarnos de que ningún paciente o lead interesado se pierda por falta de respuesta o seguimiento a tiempo.
-Lo logramos con un sistema de agentes con IA que responde consultas de forma inmediata (24/7), califica qué pacientes están listos para avanzar y hace el seguimiento automático de los que no respondieron — sin que el equipo tenga que intervenir.
-Ya lo están usando profesionales independientes y clínicas de estética en la región y el cambio más grande que notaron es que dejaron de perder pacientes en el proceso de atención.
-¿Tenés 20 minutos esta semana para verlo aplicado a tu clínica?`;
+`Buenísimo. Ah, y de paso te cuento: soy un agente de IA — literal la herramienta que te estoy por explicar 😊 Lo que hacemos es básicamente asegurarnos de que ninguna paciente se pierda por falta de seguimiento: recordatorios automáticos antes del turno, atención 24/7 por WhatsApp y reactivación de pacientes que dejaron de responder. Ya lo están usando varias clínicas de la región y lo que más valoran es que bajaron mucho las inasistencias sin sumar personal. ¿Tenés 20 minutos esta semana para verlo aplicado a tu clínica?`;
 
-// Regla de handoff (Fase 3): cualquier respuesta del DM, sin excepción, es
-// handoff inmediato a Brian. El bot no le contesta nada al decisor.
+// Bifurcaciones de la DM (2A–2D)
+// 2A (HANDOFF): cualquier interés, pregunta o disponibilidad → handoff inmediato a Brian, sin texto propio.
+export const FASE3_OBJECIONES = {
+  // 2B — "¿cómo conseguiste mi número?"
+  como_conseguiste_numero: () =>
+`Me lo facilitaron desde tu clínica cuando me contacté al número principal. Trabajo con clínicas estéticas de la región y prefiero siempre llegar directo a quien puede evaluar este tipo de soluciones.`,
+
+  // 2C — "no me interesa" / "ya tenemos herramientas" → ÚNICA bifurcación sin handoff
+  no_interesa: (dmName) => {
+    const nombre = dmName && dmName !== 'hola' && dmName !== 'te' ? `, ${dmName}` : '';
+    return `Totalmente válido${nombre}. No es para todas las clínicas. Solo te comento que lo que más resolvemos no es la falta de herramientas, sino las pacientes que ya agendaron y terminan faltando porque nadie llega a confirmar o reprogramar a tiempo. Si en algún momento querés revisarlo, quedo a disposición. 👋`;
+  },
+
+  // 2D — "mandame información por acá" → nunca se manda precio/propuesta por WhatsApp
+  mandame_info: () =>
+`Con gusto! Aunque te soy sincera, funciona mucho mejor verlo en una llamada corta porque depende de cómo tenés organizada la atención hoy. ¿Tenés 20 minutos esta semana? Si no encaja ahora, me avisás cuando sea mejor momento y coordinamos sin drama.`,
+};
