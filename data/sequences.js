@@ -10,7 +10,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // FASE 0 — Mensaje 1: apertura para activar humano (rompe bots/auto-respuestas)
-export const FASE0_APERTURA = `Buen día 👋 ¿Cómo están? Quería hacer una consulta.`;
+// ⚠️ Este texto tiene que coincidir EXACTO con el template aprobado en Meta
+// (KAPSO_TEMPLATE_NAME) — si lo cambiás acá, hay que volver a aprobar el template.
+export const FASE0_APERTURA = `Hola, qué tal? Quería hacer una consulta rápida, ¿tiene un minuto?`;
 
 // Respuesta vaga si responde un bot con menú automático (para escalar a humano)
 export const FASE0_BOT_REPLY = `Quería consultar algo puntual sobre la atención de pacientes/leads del centro`;
