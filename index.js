@@ -45,10 +45,25 @@ async function main() {
     process.exit(0);
   }
 
-  // ── Comando: lanzar lote (uso local, sin Railway corriendo en paralelo) ──
+  // ── Comando: lanzar lote ──────────────────────────────────────────────────
   if (args[0] === 'launch') {
     const limit = parseInt(args[1]) || 50;
     const country = args[2] || null;
+
+    if (TRANSPORT === 'kapso') {
+      // Con Kapso, mandar mensajes es solo un POST a la API — no hace falta
+      // levantar el webhook server para esto. Si lo hiciéramos acá (ej: corriendo
+      // este comando por `railway ssh` mientras el proceso principal ya está
+      // escuchando en el mismo contenedor), pisaría el puerto del proceso
+      // principal y colgaría el envío a mitad de camino. El proceso principal
+      // (siempre corriendo) es el que escucha las respuestas entrantes.
+      await runLaunchBatch(limit, country);
+      console.log('✅ Lote enviado. El proceso principal (siempre activo) escucha las respuestas — no hace falta dejar este proceso corriendo.');
+      process.exit(0);
+    }
+
+    // Baileys (legacy): necesita el socket activo para poder enviar, así que
+    // sí se queda escuchando después del lote.
     await startTransport();
     await runLaunchBatch(limit, country);
     console.log('Agente activo — escuchando respuestas entrantes.\n');
