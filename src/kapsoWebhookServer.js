@@ -1,17 +1,36 @@
-// Servidor HTTP que recibe los webhooks de Kapso/Meta con los mensajes entrantes
+// Servidor HTTP que recibe los webhooks de Kapso con los mensajes entrantes
 // y los eventos de estado de entrega (sent/delivered/failed).
+//
+// OJO: esto NO es el formato crudo de webhook de Meta (entry[].changes[].value.messages[]),
+// que es lo que espera normalizeWebhook() del SDK — ese helper es para cuando te
+// suscribís directo a Meta. Kapso, como intermediario, manda su PROPIO formato:
+// { message: {...}, conversation: {...} } con el tipo de evento en el header
+// `x-webhook-event` (ej: "whatsapp.message.received"), y firma con HMAC-SHA256
+// en `x-webhook-signature` (hex plano, sin el prefijo "sha256=" que usa Meta).
 
 import express from 'express';
-import { normalizeWebhook, verifySignature } from '@kapso/whatsapp-cloud-api/server';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { handleIncomingKapso, normalizePhone } from './kapsoRouter.js';
 import { getDb } from './db.js';
 import { registerDashboardRoutes } from './dashboard.js';
 
+function verifyKapsoSignature(secret, rawBody, signatureHeader) {
+  if (!secret || !signatureHeader) return false;
+  try {
+    const expected = createHmac('sha256', secret).update(rawBody).digest('hex');
+    const a = Buffer.from(signatureHeader, 'hex');
+    const b = Buffer.from(expected, 'hex');
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
+
 // Cuando Meta confirma que un mensaje no se pudo entregar (número no tiene WhatsApp,
 // dejó de existir, etc.), lo marcamos en la DB para no dejar el prospecto colgado
 // esperando una respuesta que nunca va a llegar.
-function handleFailedStatus(status) {
-  const phone = status.recipientId;
+function handleFailedStatus(phone, errorMsg) {
   if (!phone) return;
   const jid = `${normalizePhone(phone)}@s.whatsapp.net`;
 
@@ -21,22 +40,20 @@ function handleFailedStatus(status) {
   ).get(jid, jid);
   if (!prospect || ['DISCARDED', 'HANDED_OFF', 'NO_WHATSAPP'].includes(prospect.stage)) return;
 
-  const errorMsg = status.errors?.[0]?.title || status.errors?.[0]?.message || 'sin detalle';
   // COALESCE(notes, '') es necesario: en SQLite, NULL || texto da NULL y se pierde el detalle silenciosamente.
   db.prepare(`UPDATE prospects SET stage = 'NO_WHATSAPP', notes = COALESCE(notes, '') || ? WHERE id = ?`).run(
-    `\n[${new Date().toISOString().slice(0, 16).replace('T', ' ')}] Entrega fallida: ${errorMsg}`,
+    `\n[${new Date().toISOString().slice(0, 16).replace('T', ' ')}] Entrega fallida: ${errorMsg || 'sin detalle'}`,
     prospect.id
   );
-  console.log(`[FAILED] ${prospect.clinic_name} (${phone}) — ${errorMsg} — marcado NO_WHATSAPP`);
+  console.log(`[FAILED] ${prospect.clinic_name} (${phone}) — ${errorMsg || 'sin detalle'} — marcado NO_WHATSAPP`);
 }
 
 // Cuando Brian escribe a mano desde la app de WhatsApp Business (no vía nuestra API),
 // Meta lo notifica como un "eco" del mensaje enviado desde el teléfono (coexistence).
 // Kapso lo marca con kapso.source = "smb_message_echo". Ahí pausamos el agente.
-function handleManualIntervention(message) {
-  const phone = message.to;
-  if (!phone) return;
-  const jid = `${normalizePhone(phone)}@s.whatsapp.net`;
+function handleManualIntervention(toPhone) {
+  if (!toPhone) return;
+  const jid = `${normalizePhone(toPhone)}@s.whatsapp.net`;
 
   const db = getDb();
   const prospect = db.prepare(
@@ -58,7 +75,7 @@ export function startKapsoServer() {
 
   registerDashboardRoutes(app);
 
-  // Handshake de verificación (solo aplica si se suscribe directo a Meta)
+  // Handshake de verificación (solo aplica si se suscribe directo a Meta — no es nuestro caso con Kapso)
   app.get('/webhook', (req, res) => {
     const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN;
     if (verifyToken && req.query['hub.verify_token'] === verifyToken) {
@@ -69,30 +86,21 @@ export function startKapsoServer() {
   });
 
   app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-    // Log SIEMPRE que llega un POST, incluso si la firma falla — sin esto,
-    // un secreto desincronizado (ej: después de reconectar el número en Kapso)
-    // se ve exactamente igual que "no llega nada", y quedan horas sin saber cuál es.
-    console.log(`[KAPSO] POST /webhook recibido — firma presente: ${!!req.headers['x-hub-signature-256']}`);
-    console.log('[KAPSO] Headers completos:', JSON.stringify(req.headers));
-
-    // TEMPORAL: Kapso no manda x-hub-signature-256 (ese header es el de Meta
-    // para webhooks directos, no el de Kapso como intermediario) — dejamos de
-    // exigir la firma hasta confirmar qué header/esquema usa Kapso realmente,
-    // para no perder mensajes entrantes mientras tanto. Ver headers logueados abajo.
     const appSecret = process.env.KAPSO_WEBHOOK_APP_SECRET;
-    if (appSecret && req.headers['x-hub-signature-256']) {
-      const ok = verifySignature({
-        appSecret,
-        rawBody: req.body,
-        signatureHeader: req.headers['x-hub-signature-256'],
-      });
-      if (!ok) {
-        console.error('[KAPSO] Firma x-hub-signature-256 inválida — el KAPSO_WEBHOOK_APP_SECRET no coincide.');
+    const signatureHeader = req.headers['x-webhook-signature'];
+
+    if (appSecret) {
+      if (!signatureHeader) {
+        console.error('[KAPSO] Falta x-webhook-signature en el request — revisar config del webhook en Kapso.');
+        return res.status(401).end();
+      }
+      if (!verifyKapsoSignature(appSecret, req.body, signatureHeader)) {
+        console.error('[KAPSO] Firma x-webhook-signature inválida — KAPSO_WEBHOOK_APP_SECRET no coincide con el "secret_key" configurado en Kapso.');
         return res.status(401).end();
       }
     }
 
-    res.sendStatus(200); // responder rápido, procesar después (evita reintentos de Meta por timeout)
+    res.sendStatus(200); // responder rápido, procesar después (evita reintentos por timeout)
 
     let payload;
     try {
@@ -102,23 +110,36 @@ export function startKapsoServer() {
       return;
     }
 
-    console.log('[KAPSO-RAW]', JSON.stringify(payload).slice(0, 800));
+    const eventType = req.headers['x-webhook-event'];
+    console.log(`[KAPSO] Evento: ${eventType} —`, JSON.stringify(payload).slice(0, 500));
 
     try {
-      const events = normalizeWebhook(payload);
-      for (const message of events.messages || []) {
-        if (message.type === 'text' && message.kapso?.direction === 'inbound') {
-          await handleIncomingKapso(message.from, message.text?.body || '', message.id);
-        }
-        if (message.kapso?.direction === 'outbound' && message.kapso?.source === 'smb_message_echo') {
-          handleManualIntervention(message);
-        }
+      const message = payload.message;
+      if (!message) return;
+
+      if (message.kapso?.direction === 'inbound' && message.type === 'text') {
+        await handleIncomingKapso(message.from, message.text?.body || '', message.id);
+        return;
       }
-      for (const status of events.statuses || []) {
-        if (status.status === 'failed') handleFailedStatus(status);
+
+      if (message.kapso?.direction === 'outbound' && message.kapso?.source === 'smb_message_echo') {
+        handleManualIntervention(message.to || message.from);
+        return;
+      }
+
+      if (message.kapso?.status === 'failed') {
+        const errorMsg = message.kapso?.error?.title || message.kapso?.error?.message;
+        handleFailedStatus(message.to || message.from, errorMsg);
+        return;
+      }
+
+      // Evento que no reconocemos todavía (ej: un tipo de status nuevo) — lo logueamos
+      // completo para poder ajustar el parseo sin perder el mensaje en silencio.
+      if (!['whatsapp.message.received', 'whatsapp.message.sent'].includes(eventType)) {
+        console.log('[KAPSO] Evento no manejado explícitamente, payload completo:', JSON.stringify(payload));
       }
     } catch (err) {
-      console.error('[KAPSO] Error normalizando webhook (revisar formato del payload arriba):', err.message);
+      console.error('[KAPSO] Error procesando el webhook (revisar payload logueado arriba):', err.message);
     }
   });
 
