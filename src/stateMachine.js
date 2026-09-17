@@ -91,7 +91,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
         await send(prospect, fromJid, FASE2_CIERRE_PORTERO);
         // Número nuevo, sin conversación previa → mensaje frío, necesita template aprobado
         await sendFase3Apertura(dmJid, dmName, pais);
-        logMessage(prospect.id, 'out', '[Template de apertura a DM enviado]');
+        logMessage(prospect.id, 'out', FASE3_APERTURA(dmName, pais));
         await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
       } else {
         await updateProspect(prospect.id, {

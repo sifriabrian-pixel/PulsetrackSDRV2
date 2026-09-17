@@ -1,5 +1,6 @@
 import { getPendingProspects, updateProspect, logMessage } from './db.js';
 import { resolveJid, chatExists, sendFase0Apertura } from './transport.js';
+import { FASE0_APERTURA } from '../data/sequences.js';
 
 // Si falla el envío N veces seguidas, es casi seguro un problema sistémico
 // (número no registrado en Meta, template no aprobado, API caída) y no un
@@ -53,7 +54,7 @@ export async function runLaunchBatch(limit, country = null) {
 
         // Mandar primero, marcar FASE0_SENT solo si el envío realmente funcionó
         await sendFase0Apertura(jid);
-        logMessage(prospect.id, 'out', '[Template de apertura fría enviado]');
+        logMessage(prospect.id, 'out', FASE0_APERTURA);
         await updateProspect(prospect.id, {
           stage: 'FASE0_SENT',
           gatekeeper_jid: jid,
