@@ -1,7 +1,7 @@
 // Equivalente a router.js pero para mensajes entrantes vía webhook de Kapso.
 // No hay LIDs en la API Oficial — siempre es el número de teléfono real.
 
-import { getDb, getProspectByJid } from './db.js';
+import { getDb, getProspectByJid, alreadySeenMessage } from './db.js';
 import { handleMessage } from './stateMachine.js';
 
 const processing = new Set();
@@ -33,28 +33,12 @@ export function normalizePhone(phone) {
 const pending = new Map(); // prospectId -> { texts: string[], fromJid, timer }
 const DEBOUNCE_MS = 30 * 1000;
 
-// Meta puede reentregar el mismo webhook más de una vez (documentado). Sin esto,
-// un mensaje reentregado después de que ya avanzamos de etapa se vuelve a
-// clasificar bajo la etapa nueva, como si fuera la respuesta a otra pregunta.
-const seenMessageIds = new Set();
-const seenMessageIdsOrder = [];
-const MAX_SEEN_IDS = 1000;
-
-function alreadySeen(messageId) {
-  if (!messageId) return false;
-  if (seenMessageIds.has(messageId)) return true;
-  seenMessageIds.add(messageId);
-  seenMessageIdsOrder.push(messageId);
-  if (seenMessageIdsOrder.length > MAX_SEEN_IDS) {
-    const oldest = seenMessageIdsOrder.shift();
-    seenMessageIds.delete(oldest);
-  }
-  return false;
-}
-
 export async function handleIncomingKapso(fromPhone, text, messageId) {
   if (!fromPhone || !text) return;
-  if (alreadySeen(messageId)) {
+  // Persistente en DB (no en memoria) — Meta/Kapso puede reentregar el mismo
+  // webhook, y un Set en memoria se pierde en cada redeploy justo cuando más
+  // hace falta (ver comentario en la tabla seen_messages de db.js).
+  if (alreadySeenMessage(messageId)) {
     console.log(`[DUP] mensaje ${messageId} ya procesado — ignorando reentrega del webhook`);
     return;
   }

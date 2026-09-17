@@ -40,9 +40,28 @@ export function initDb() {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_messages_prospect ON messages(prospect_id);
+
+    -- Dedup de mensajes entrantes por wamid. Tiene que ser persistente (no en
+    -- memoria): un redeploy borra cualquier Set en memoria, y si justo en ese
+    -- momento Kapso reintenta entregar un webhook (o llega tarde por el reintento
+    -- de un fallo previo), el mismo mensaje se reprocesa como si fuera nuevo.
+    -- Pasó de verdad en producción durante los redeploys seguidos arreglando el
+    -- webhook: un prospecto recibió el Mensaje 2 duplicado.
+    CREATE TABLE IF NOT EXISTS seen_messages (
+      message_id TEXT PRIMARY KEY,
+      seen_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   return db;
+}
+
+// Devuelve true si ese wamid ya se procesó antes (y lo registra si es la
+// primera vez) — atómico vía INSERT OR IGNORE, sobrevive a redeploys.
+export function alreadySeenMessage(messageId) {
+  if (!messageId) return false;
+  const result = getDb().prepare(`INSERT OR IGNORE INTO seen_messages (message_id) VALUES (?)`).run(messageId);
+  return result.changes === 0;
 }
 
 // Registra un mensaje (entrante o saliente) para poder mostrar la conversación
