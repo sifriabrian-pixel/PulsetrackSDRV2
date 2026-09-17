@@ -3,15 +3,12 @@ import { sendMessage, sendFase3Apertura } from './transport.js';
 import { sendHandoff } from './notifier.js';
 import {
   detectRole,
-  classifyPorteroEsDM,
   gatekeeperTurn,
   dmTurn,
-  generateDmOpening,
 } from './claude.js';
 import {
   FASE0_BOT_REPLY,
   FASE1_INICIAL,
-  FASE2_OBJECIONES,
   FASE2_CIERRE_PORTERO,
   FASE3_APERTURA,
   FASE3_APERTURA_B,
@@ -162,68 +159,6 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     return;
   }
 
-  // ─── FASE 2 — pidiendo nombre de la directora (3D, primer paso) ──────────
-  if (stage === 'FASE2_PIDIENDO_NOMBRE') {
-    await updateProspect(prospect.id, {
-      last_reply_at: new Date().toISOString(),
-      notes: appendNote(notes, `Recepción respondió pedido de nombre: "${incomingText.slice(0, 80)}"`),
-    });
-    await send(prospect, fromJid, FASE2_OBJECIONES.pide_instagram_email());
-    await updateProspect(prospect.id, {
-      stage: 'FASE2_PIDIENDO_INSTAGRAM',
-      last_message_at: new Date().toISOString(),
-    });
-    return;
-  }
-
-  // ─── FASE 2 — pidiendo Instagram/email (3D, segundo paso) ─────────────────
-  if (stage === 'FASE2_PIDIENDO_INSTAGRAM') {
-    const tieneDato = /@|instagram|\.com|\.[a-z]{2,3}\b/i.test(incomingText);
-
-    if (tieneDato) {
-      await updateProspect(prospect.id, {
-        stage: 'HANDED_OFF',
-        notes: appendNote(notes, `Recepción dio Instagram/email: "${incomingText.trim()}" — seguimiento manual`),
-      });
-      await sendHandoff({ ...prospect, stage: 'HANDED_OFF' });
-      console.log(`[HANDOFF] ${prospect.clinic_name} — recepción dio Instagram/email, seguimiento manual`);
-    } else {
-      await send(prospect, fromJid, FASE2_OBJECIONES.no_dan_nada(pais));
-      await updateProspect(prospect.id, {
-        stage: 'DISCARDED',
-        notes: appendNote(notes, `Descartado: recepción no dio ningún dato de contacto`),
-      });
-      console.log(`[DISCARDED] ${prospect.clinic_name} — sin datos de contacto`);
-    }
-    return;
-  }
-
-  // ─── FASE 2 CALIFICANDO: recepción dijo "yo ayudo" — ¿es decisora? ────────
-  if (stage === 'FASE2_CALIFICANDO') {
-    const { is_dm } = await classifyPorteroEsDM(incomingText);
-
-    if (is_dm) {
-      const opening = await generateDmOpening({ clinicName: prospect.clinic_name, pais, isIndependent: false });
-      await updateProspect(prospect.id, {
-        stage: 'FASE3_BIFURCACION_B',
-        dm_jid: fromJid,
-        last_reply_at: new Date().toISOString(),
-        notes: appendNote(notes, `Recepción confirmó ser decisora — pitch de Etapa 2 enviado`),
-      });
-      await send(prospect, fromJid, opening || FASE3_APERTURA_B());
-      await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
-    } else {
-      await send(prospect, fromJid, FASE2_OBJECIONES.no_es_decisor());
-      await updateProspect(prospect.id, {
-        stage: 'FASE2_PORTERO',
-        last_message_at: new Date().toISOString(),
-        last_reply_at: new Date().toISOString(),
-        notes: appendNote(notes, `Recepción no es decisora — pidiendo contacto de la directora`),
-      });
-    }
-    return;
-  }
-
   // ─── FASE 3: conversación con la directora/DM ─────────────────────────────
   // Regla de handoff: cualquier respuesta que no sea un rechazo puro (2C) es
   // handoff inmediato a Brian. 2C es la ÚNICA bifurcación donde Valentina
@@ -260,6 +195,17 @@ export async function handleMessage(prospect, incomingText, fromJid) {
         last_reply_at: new Date().toISOString(),
         last_message_at: new Date().toISOString(),
         notes: appendNote(notes, `DM pidió que le mandemos info por WhatsApp — se la redirigió a la llamada`),
+      });
+      return;
+    }
+
+    if (result.action === 'ASKED_IF_BOT') {
+      await send(prospect, fromJid, result.reply);
+      await updateProspect(prospect.id, {
+        stage: 'FASE3_OBJECION',
+        last_reply_at: new Date().toISOString(),
+        last_message_at: new Date().toISOString(),
+        notes: appendNote(notes, `DM preguntó si es un bot/IA — se confirmó con honestidad`),
       });
       return;
     }

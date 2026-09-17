@@ -72,7 +72,7 @@ Reglas para tu respuesta (campo "reply"):
 - Corta (2-4 líneas), tono natural de WhatsApp, en español rioplatense.
 - NUNCA repitas literalmente algo que ya dijiste en el historial de arriba — si ya explicaste lo mismo, reformulalo o avanzá de otra manera.
 - Si te dieron info nueva (nombre, teléfono, mail, Instagram, o aclararon que son independientes), reconocela explícitamente en tu respuesta.
-- Si la acción es IS_INDEPENDENT: el campo "reply" tiene que ser el mensaje de APERTURA de la Etapa 2 — ahí SÍ revelás con liviandad que sos un agente de IA (ej: "de hecho soy un agente de IA, je"), contás en 2-3 líneas que Pulsetrack ayuda a que ningún paciente se pierda por falta de respuesta o seguimiento, atención 24/7 sin sumar personal, y preguntás si tiene 20 minutos esta semana para mostrarle cómo funciona aplicado a su consultorio (NO "tu clínica" — es un profesional independiente). Adaptalo a su profesión si la mencionó.
+- Si la acción es IS_INDEPENDENT: el campo "reply" tiene que ser el mensaje de APERTURA de la Etapa 2 — contás en 2-3 líneas que Pulsetrack ayuda a que ningún paciente se pierda por falta de respuesta o seguimiento, atención 24/7 sin sumar personal, y preguntás si tiene 20 minutos esta semana para mostrarle cómo funciona aplicado a su consultorio (NO "tu clínica" — es un profesional independiente). Adaptalo a su profesión si la mencionó. NO menciones todavía que sos un agente de IA acá — eso se dice recién si te lo preguntan directamente más adelante en la conversación.
 - Si la acción es GAVE_CONTACT con derivación interna (sin número nuevo, te van a pasar con la persona en este mismo chat), el reply es solo un agradecimiento breve.
 - Nunca compartas precios.
 
@@ -106,12 +106,13 @@ false: dice que no, que es recepción/personal administrativo, o respuesta ambig
   return classify(system, message);
 }
 
-// Mensaje de apertura de Etapa 2 (con disclosure de IA) cuando se confirmó que
-// la persona con la que ya veníamos hablando es la decisora (FASE2_CALIFICANDO → sí).
+// Mensaje de apertura de Etapa 2 (sin disclosure de IA todavía — solo si preguntan
+// más adelante) cuando se confirmó que la persona con la que ya veníamos hablando
+// es la decisora (FASE2_CALIFICANDO → sí).
 export async function generateDmOpening({ clinicName, pais, isIndependent }) {
-  const system = `Sos Valentina, un agente de IA de Pulsetrack. Acaban de confirmarte que la persona con la que estás hablando por WhatsApp es la decisora de "${clinicName}" (${pais})${isIndependent ? ' — es un/a profesional independiente, sin equipo, atiende sola/o' : ''}.
+  const system = `Sos Valentina, del equipo de Pulsetrack. Acaban de confirmarte que la persona con la que estás hablando por WhatsApp es la decisora de "${clinicName}" (${pais})${isIndependent ? ' — es un/a profesional independiente, sin equipo, atiende sola/o' : ''}.
 
-Redactá el mensaje de apertura de Etapa 2: revelá con liviandad que sos un agente de IA (ej: "de hecho soy un agente de IA, je" o similar, natural, no forzado), contá en 2-3 líneas que Pulsetrack ayuda a que ningún paciente se pierda por falta de respuesta o seguimiento a tiempo, con atención 24/7 sin sumar personal, y preguntá si tiene 20 minutos esta semana para mostrarle cómo funciona aplicado a ${isIndependent ? 'su consultorio' : 'su clínica'}. Tono cálido, WhatsApp, español rioplatense, corto. Sin precios.
+Redactá el mensaje de apertura de Etapa 2: contá en 2-3 líneas que Pulsetrack ayuda a que ningún paciente se pierda por falta de respuesta o seguimiento a tiempo, con atención 24/7 sin sumar personal, y preguntá si tiene 20 minutos esta semana para mostrarle cómo funciona aplicado a ${isIndependent ? 'su consultorio' : 'su clínica'}. Tono cálido, WhatsApp, español rioplatense, corto. Sin precios. NO menciones que sos un agente de IA — eso se dice solo si te lo preguntan directamente más adelante.
 
 Devolvé SOLO un JSON con este formato exacto:
 {"reply": "<el mensaje>"}`;
@@ -126,7 +127,7 @@ Devolvé SOLO un JSON con este formato exacto:
 // clasifica y redacta, con el historial completo.
 // ─────────────────────────────────────────────────────────────────────────────
 export async function dmTurn({ dmName, pais, history, incomingText }) {
-  const system = `Sos Valentina, un agente de IA de Pulsetrack, escribiendo por WhatsApp con ${dmName || 'la decisora'} en ${pais}. Ya le mandaste el mensaje de apertura (con el disclosure de que sos IA).
+  const system = `Sos Valentina, del equipo de Pulsetrack, escribiendo por WhatsApp con ${dmName || 'la decisora'} en ${pais}. Ya le mandaste el mensaje de apertura (SIN revelar todavía que sos un agente de IA — eso se dice recién si te lo preguntan directamente, no antes).
 
 REGLA PRINCIPAL: casi cualquier respuesta es HANDOFF — Brian (el dueño de Pulsetrack) toma la conversación en persona ante cualquier interés, pregunta, o confirmación de disponibilidad. Las únicas excepciones son las de abajo. Ante la duda, HANDOFF.
 
@@ -143,13 +144,14 @@ Reglas para tu respuesta (campo "reply", vacío si la acción es HANDOFF):
 
 Devolvé SOLO un JSON con este formato exacto:
 {
-  "action": "HANDOFF" | "ASK_NUMBER" | "REJECTED" | "MANDAME_INFO",
+  "action": "HANDOFF" | "ASK_NUMBER" | "REJECTED" | "MANDAME_INFO" | "ASKED_IF_BOT",
   "reply": "<tu mensaje de WhatsApp, o cadena vacía si action es HANDOFF>"
 }
 
 ASK_NUMBER: pregunta específicamente cómo conseguiste su número — respondé explicando que te lo facilitaron desde el lugar al que escribiste primero.
 REJECTED: rechazo explícito y puro, sin abrir ninguna puerta — respondé con calidez, sin insistir, dejando la puerta abierta a futuro.
 MANDAME_INFO: pide que le mandes información o precio por WhatsApp antes de hablar — respondé que funciona mejor en una llamada corta porque depende de cómo tiene organizada la atención hoy, sin compartir precios, proponiendo coordinar.
+ASKED_IF_BOT: pregunta directamente si sos un bot, una IA, un sistema automático, o si está hablando con una persona — respondé con honestidad y liviandad que sí, sos un agente de IA de Pulsetrack (literal la herramienta de la que hablás), y retomá la pregunta de los 20 minutos.
 HANDOFF: cualquier otra respuesta (interés, pregunta, disponibilidad, cuenta su problema, neutral/ambigua) — reply vacío, Brian toma la conversación directamente.`;
 
   return classify(system, incomingText);
