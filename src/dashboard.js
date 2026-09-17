@@ -192,7 +192,11 @@ export function registerDashboardRoutes(app) {
     try {
       await sendMessage(jid, text);
       logMessage(prospect.id, 'out', text);
-      updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
+      // Responder a mano desde acá es una intervención manual — el bot no
+      // tiene que seguir contestando este prospecto por su cuenta después.
+      const fields = { last_message_at: new Date().toISOString() };
+      if (!['DISCARDED', 'HANDED_OFF'].includes(prospect.stage)) fields.stage = 'HANDED_OFF';
+      updateProspect(prospect.id, fields);
       res.json({ ok: true });
     } catch (err) {
       // Fuera de la ventana de 24hs, texto libre no funciona — hace falta un template.

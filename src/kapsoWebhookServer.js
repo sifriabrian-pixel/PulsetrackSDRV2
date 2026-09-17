@@ -11,7 +11,7 @@
 import express from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { handleIncomingKapso, normalizePhone } from './kapsoRouter.js';
-import { getDb } from './db.js';
+import { getDb, isBotSentMessage } from './db.js';
 import { registerDashboardRoutes } from './dashboard.js';
 
 function verifyKapsoSignature(secret, rawBody, signatureHeader) {
@@ -48,9 +48,11 @@ function handleFailedStatus(phone, errorMsg) {
   console.log(`[FAILED] ${prospect.clinic_name} (${phone}) — ${errorMsg || 'sin detalle'} — marcado NO_WHATSAPP`);
 }
 
-// Cuando Brian escribe a mano desde la app de WhatsApp Business (no vía nuestra API),
-// Meta lo notifica como un "eco" del mensaje enviado desde el teléfono (coexistence).
-// Kapso lo marca con kapso.source = "smb_message_echo". Ahí pausamos el agente.
+// Cuando Brian escribe a mano — desde el inbox de Kapso, o cualquier canal que
+// no sea nuestro propio código — pausamos el agente para ese prospecto. Se
+// detecta por descarte: todo mensaje que MANDA el bot queda registrado por su
+// wamid (ver trackSentId en kapso.js); si llega un evento "message sent" con
+// un wamid que no está ahí, no lo mandamos nosotros.
 function handleManualIntervention(toPhone) {
   if (!toPhone) return;
   const jid = `${normalizePhone(toPhone)}@s.whatsapp.net`;
@@ -122,14 +124,13 @@ export function startKapsoServer() {
         return;
       }
 
-      if (message.kapso?.direction === 'outbound' && message.kapso?.source === 'smb_message_echo') {
-        handleManualIntervention(message.to || message.from);
-        return;
-      }
-
-      if (message.kapso?.status === 'failed') {
-        const errorMsg = message.kapso?.error?.title || message.kapso?.error?.message;
-        handleFailedStatus(message.to || message.from, errorMsg);
+      if (message.kapso?.direction === 'outbound') {
+        if (message.kapso?.status === 'failed') {
+          const errorMsg = message.kapso?.error?.title || message.kapso?.error?.message;
+          handleFailedStatus(message.to || message.from, errorMsg);
+        } else if (!isBotSentMessage(message.id)) {
+          handleManualIntervention(message.to || message.from);
+        }
         return;
       }
 

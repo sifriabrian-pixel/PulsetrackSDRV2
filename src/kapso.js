@@ -3,7 +3,7 @@
 
 import { WhatsAppClient, buildTemplateSendPayload } from '@kapso/whatsapp-cloud-api';
 import { enqueue } from './scheduler.js';
-import { getDb } from './db.js';
+import { getDb, markBotSentMessage } from './db.js';
 
 // Instanciación perezosa: si este módulo se importa (vía transport.js) para un
 // comando que no manda mensajes (ej: `import`), no debe romper por falta de
@@ -25,11 +25,20 @@ function phoneFromJid(jid) {
   return jid.split('@')[0];
 }
 
+// Registra el wamid de lo que mandó el bot — así el webhook puede distinguir
+// un "message sent" propio de uno mandado a mano desde el inbox de Kapso
+// (intervención manual, ver handleManualIntervention en kapsoWebhookServer.js).
+function trackSentId(result) {
+  const id = result?.messages?.[0]?.id;
+  if (id) markBotSentMessage(id);
+  return result;
+}
+
 export async function sendMessage(jid, text) {
   const to = phoneFromJid(jid);
   return enqueue(async () => {
     const result = await getClient().messages.sendText({ phoneNumberId, to, body: text });
-    return result;
+    return trackSentId(result);
   });
 }
 
@@ -38,7 +47,7 @@ export async function sendTemplateMessage(jid, templateName, language = 'es_AR')
   return enqueue(async () => {
     const template = buildTemplateSendPayload({ name: templateName, language });
     const result = await getClient().messages.sendTemplate({ phoneNumberId, to, template });
-    return result;
+    return trackSentId(result);
   });
 }
 

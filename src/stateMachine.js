@@ -1,11 +1,12 @@
-import { updateProspect, logMessage } from './db.js';
+import { updateProspect, logMessage, getMessages } from './db.js';
 import { sendMessage, sendFase3Apertura } from './transport.js';
 import { sendHandoff } from './notifier.js';
 import {
   detectRole,
-  classifyGatekeeperReply,
   classifyPorteroEsDM,
-  classifyDmReply,
+  gatekeeperTurn,
+  dmTurn,
+  generateDmOpening,
 } from './claude.js';
 import {
   FASE0_BOT_REPLY,
@@ -14,7 +15,6 @@ import {
   FASE2_CIERRE_PORTERO,
   FASE3_APERTURA,
   FASE3_APERTURA_B,
-  FASE3_OBJECIONES,
 } from '../data/sequences.js';
 
 function appendNote(existing, note) {
@@ -25,11 +25,15 @@ function appendNote(existing, note) {
 // Manda el mensaje y lo deja registrado en `messages` para que el dashboard
 // pueda mostrar la conversación completa (no solo el resumen de `notes`).
 async function send(prospect, jid, text) {
+  if (!text) return;
   await sendMessage(jid, text);
   logMessage(prospect.id, 'out', text);
 }
 
 export async function handleMessage(prospect, incomingText, fromJid) {
+  // Historial ANTES de este turno — se lo pasamos a Claude para que no se
+  // repita y reaccione a lo que ya se dijo. Se loguea el turno actual después.
+  const history = getMessages(prospect.id);
   logMessage(prospect.id, 'in', incomingText);
 
   const { stage, country, dm_name, notes } = prospect;
@@ -71,8 +75,11 @@ export async function handleMessage(prospect, incomingText, fromJid) {
   }
 
   // ─── FASE 2: conversación con recepción/atención al cliente ──────────────
+  // Valentina lee el historial completo y redacta la respuesta en el momento
+  // (en vez de elegir entre mensajes fijos) — así no se repite y reacciona a
+  // lo que realmente dijeron (ej: "soy psicólogo, no tengo clínica").
   if (['FASE2_PORTERO', 'FASE2_OBJECION', 'FASE2_YA_TIENEN'].includes(stage)) {
-    const result = await classifyGatekeeperReply(incomingText);
+    const result = await gatekeeperTurn({ clinicName: prospect.clinic_name, pais, history, incomingText });
 
     if (result.action === 'GAVE_CONTACT') {
       const dmPhone = result.dm_phone;
@@ -88,12 +95,15 @@ export async function handleMessage(prospect, incomingText, fromJid) {
           last_reply_at: new Date().toISOString(),
           notes: appendNote(notes, `Recepción dio contacto: ${dmPhone} (${result.dm_name || 'sin nombre'})`),
         });
-        await send(prospect, fromJid, FASE2_CIERRE_PORTERO);
+        await send(prospect, fromJid, result.reply || FASE2_CIERRE_PORTERO);
         // Número nuevo, sin conversación previa → mensaje frío, necesita template aprobado
         await sendFase3Apertura(dmJid, dmName, pais);
         logMessage(prospect.id, 'out', FASE3_APERTURA(dmName, pais));
         await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
       } else {
+        // Derivación interna — sigue siendo el mismo chat, dentro de la ventana de 24hs.
+        // Este es el momento del disclosure de IA, así que se mantiene el texto
+        // aprobado en vez de generarlo libremente.
         await updateProspect(prospect.id, {
           stage: 'FASE3_BIFURCACION',
           dm_name: result.dm_name || null,
@@ -107,83 +117,47 @@ export async function handleMessage(prospect, incomingText, fromJid) {
       return;
     }
 
-    if (result.action === 'YO_AYUDO') {
-      await send(prospect, fromJid, FASE2_OBJECIONES.calificar_portero());
+    if (result.action === 'IS_INDEPENDENT') {
+      // Es un profesional independiente — es la persona correcta, saltamos
+      // directo a la apertura de Etapa 2 (con disclosure de IA) en este chat.
+      await send(prospect, fromJid, result.reply);
       await updateProspect(prospect.id, {
-        stage: 'FASE2_CALIFICANDO',
-        last_message_at: new Date().toISOString(),
+        stage: 'FASE3_BIFURCACION_B',
+        dm_jid: fromJid,
         last_reply_at: new Date().toISOString(),
-        notes: appendNote(notes, `Recepción se ofreció a escuchar — calificando si es decisora`),
+        last_message_at: new Date().toISOString(),
+        notes: appendNote(notes, `Profesional independiente identificado — pitch de Etapa 2 enviado`),
       });
       return;
     }
 
-    if (result.action === 'QUIERE_INFO') {
-      await send(prospect, fromJid, FASE2_OBJECIONES.que_se_trata(pais));
-      await updateProspect(prospect.id, {
-        stage: 'FASE2_OBJECION',
-        last_message_at: new Date().toISOString(),
-        last_reply_at: new Date().toISOString(),
-      });
-      return;
-    }
-
-    if (result.action === 'MANDAME_INFO') {
-      await send(prospect, fromJid, FASE2_OBJECIONES.mandame_info(pais));
-      await updateProspect(prospect.id, {
-        stage: 'FASE2_OBJECION',
-        last_message_at: new Date().toISOString(),
-        last_reply_at: new Date().toISOString(),
-      });
-      return;
-    }
-
-    if (result.action === 'NO_CONTACTO') {
-      await send(prospect, fromJid, FASE2_OBJECIONES.no_contacto());
-      await updateProspect(prospect.id, {
-        stage: 'FASE2_PIDIENDO_NOMBRE',
-        last_message_at: new Date().toISOString(),
-        last_reply_at: new Date().toISOString(),
-      });
-      return;
-    }
-
-    if (result.action === 'PIDE_WEB') {
-      await send(prospect, fromJid, FASE2_OBJECIONES.piden_web());
-      await updateProspect(prospect.id, {
-        stage: 'FASE2_OBJECION',
-        last_message_at: new Date().toISOString(),
-        last_reply_at: new Date().toISOString(),
-      });
-      return;
-    }
-
-    if (result.action === 'YA_TIENEN' || result.action === 'REJECTED') {
-      if (stage === 'FASE2_YA_TIENEN') {
-        // Ya se le pidió el contacto una vez tras un "ya tienen" — insiste, cerramos
-        await send(prospect, fromJid, FASE2_OBJECIONES.ya_tienen_insiste());
+    if (result.action === 'REJECTED') {
+      const rejections = (prospect.rejection_count || 0) + 1;
+      await send(prospect, fromJid, result.reply);
+      if (rejections >= 2) {
         await updateProspect(prospect.id, {
           stage: 'DISCARDED',
-          notes: appendNote(notes, `Descartado: recepción insistió en "ya tenemos"/rechazo`),
+          rejection_count: rejections,
+          notes: appendNote(notes, `Descartado: recepción rechazó ${rejections} veces`),
         });
-        console.log(`[DISCARDED] ${prospect.clinic_name} — recepción insistió`);
+        console.log(`[DISCARDED] ${prospect.clinic_name} — rechazó ${rejections} veces`);
       } else {
-        await send(prospect, fromJid, FASE2_OBJECIONES.ya_tienen());
         await updateProspect(prospect.id, {
-          stage: 'FASE2_YA_TIENEN',
+          stage: 'FASE2_OBJECION',
+          rejection_count: rejections,
           last_message_at: new Date().toISOString(),
           last_reply_at: new Date().toISOString(),
-          notes: appendNote(notes, `Recepción dijo "ya tienen"/rechazo — pedido de contacto enviado`),
         });
       }
       return;
     }
 
-    // UNKNOWN — fallback genérico
-    await send(prospect, fromJid, FASE2_OBJECIONES.fallback_generico());
+    // CONTINUE — seguimos en la conversación con recepción
+    await send(prospect, fromJid, result.reply);
     await updateProspect(prospect.id, {
       stage: 'FASE2_OBJECION',
       last_message_at: new Date().toISOString(),
+      last_reply_at: new Date().toISOString(),
     });
     return;
   }
@@ -229,14 +203,14 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     const { is_dm } = await classifyPorteroEsDM(incomingText);
 
     if (is_dm) {
-      await send(prospect, fromJid, FASE2_OBJECIONES.confirma_es_dm());
+      const opening = await generateDmOpening({ clinicName: prospect.clinic_name, pais, isIndependent: false });
       await updateProspect(prospect.id, {
         stage: 'FASE3_BIFURCACION_B',
         dm_jid: fromJid,
         last_reply_at: new Date().toISOString(),
-        notes: appendNote(notes, `Recepción confirmó ser decisora — enviando pitch directo (MSG 1B)`),
+        notes: appendNote(notes, `Recepción confirmó ser decisora — pitch de Etapa 2 enviado`),
       });
-      await send(prospect, fromJid, FASE3_APERTURA_B());
+      await send(prospect, fromJid, opening || FASE3_APERTURA_B());
       await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
     } else {
       await send(prospect, fromJid, FASE2_OBJECIONES.no_es_decisor());
@@ -255,11 +229,10 @@ export async function handleMessage(prospect, incomingText, fromJid) {
   // handoff inmediato a Brian. 2C es la ÚNICA bifurcación donde Valentina
   // responde y sigue sin pasarle la conversación a Brian.
   if (['FASE3_BIFURCACION', 'FASE3_BIFURCACION_B', 'FASE3_OBJECION'].includes(stage)) {
-    const context = prospect.notes || '';
-    const result = await classifyDmReply(incomingText, context);
+    const result = await dmTurn({ dmName: dm_name, pais, history, incomingText });
 
     if (result.action === 'REJECTED') {
-      await send(prospect, fromJid, FASE3_OBJECIONES.no_interesa(dm_name));
+      await send(prospect, fromJid, result.reply);
       await updateProspect(prospect.id, {
         stage: 'DISCARDED',
         last_reply_at: new Date().toISOString(),
@@ -270,7 +243,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     }
 
     if (result.action === 'ASK_NUMBER') {
-      await send(prospect, fromJid, FASE3_OBJECIONES.como_conseguiste_numero());
+      await send(prospect, fromJid, result.reply);
       await updateProspect(prospect.id, {
         stage: 'FASE3_OBJECION',
         last_reply_at: new Date().toISOString(),
@@ -281,7 +254,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     }
 
     if (result.action === 'MANDAME_INFO') {
-      await send(prospect, fromJid, FASE3_OBJECIONES.mandame_info());
+      await send(prospect, fromJid, result.reply);
       await updateProspect(prospect.id, {
         stage: 'FASE3_OBJECION',
         last_reply_at: new Date().toISOString(),

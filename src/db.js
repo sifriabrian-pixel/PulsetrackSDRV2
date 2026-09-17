@@ -51,6 +51,15 @@ export function initDb() {
       message_id TEXT PRIMARY KEY,
       seen_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+
+    -- wamids de los mensajes que MANDÓ el bot (vía sendMessage/sendTemplateMessage).
+    -- Sirve para detectar intervención manual: si llega un evento "message sent"
+    -- con un wamid que no está acá, no lo mandamos nosotros — alguien escribió a
+    -- mano desde el inbox de Kapso — y hay que pausar el agente para ese prospecto.
+    CREATE TABLE IF NOT EXISTS bot_sent_messages (
+      message_id TEXT PRIMARY KEY,
+      sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   return db;
@@ -62,6 +71,18 @@ export function alreadySeenMessage(messageId) {
   if (!messageId) return false;
   const result = getDb().prepare(`INSERT OR IGNORE INTO seen_messages (message_id) VALUES (?)`).run(messageId);
   return result.changes === 0;
+}
+
+export function markBotSentMessage(messageId) {
+  if (!messageId) return;
+  try {
+    getDb().prepare(`INSERT OR IGNORE INTO bot_sent_messages (message_id) VALUES (?)`).run(messageId);
+  } catch { /* no crítico */ }
+}
+
+export function isBotSentMessage(messageId) {
+  if (!messageId) return false;
+  return !!getDb().prepare(`SELECT 1 FROM bot_sent_messages WHERE message_id = ?`).get(messageId);
 }
 
 // Registra un mensaje (entrante o saliente) para poder mostrar la conversación
