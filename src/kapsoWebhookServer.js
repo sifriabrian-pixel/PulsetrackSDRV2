@@ -69,6 +69,11 @@ export function startKapsoServer() {
   });
 
   app.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+    // Log SIEMPRE que llega un POST, incluso si la firma falla — sin esto,
+    // un secreto desincronizado (ej: después de reconectar el número en Kapso)
+    // se ve exactamente igual que "no llega nada", y quedan horas sin saber cuál es.
+    console.log(`[KAPSO] POST /webhook recibido — firma presente: ${!!req.headers['x-hub-signature-256']}`);
+
     const appSecret = process.env.KAPSO_WEBHOOK_APP_SECRET;
     if (appSecret) {
       const ok = verifySignature({
@@ -76,7 +81,10 @@ export function startKapsoServer() {
         rawBody: req.body,
         signatureHeader: req.headers['x-hub-signature-256'],
       });
-      if (!ok) return res.status(401).end();
+      if (!ok) {
+        console.error('[KAPSO] Firma inválida — el KAPSO_WEBHOOK_APP_SECRET no coincide con el configurado en Kapso.');
+        return res.status(401).end();
+      }
     }
 
     res.sendStatus(200); // responder rápido, procesar después (evita reintentos de Meta por timeout)
