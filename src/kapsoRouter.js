@@ -10,10 +10,19 @@ const processing = new Set();
 // extra después del 52), pero nosotros los guardamos/mandamos como 52XXXXXXXXXX
 // (como vienen en el CSV, sin el 1). Sin esto, las respuestas de México no
 // encuentran al prospecto y caen como [UNKNOWN].
+//
+// Argentina: al revés — el "from" entrante llega SIN el "9" de celular
+// (54XXXXXXXXXX, 12 dígitos), pero nosotros guardamos/mandamos CON el "9"
+// (549XXXXXXXXXX, 13 dígitos, ver normalizeOutboundPhone en kapso.js). Sin
+// esto, las respuestas de Argentina no encuentran al prospecto y caen
+// como [UNKNOWN] — bug real detectado en producción.
 export function normalizePhone(phone) {
   const digits = phone.replace(/\D/g, '');
   if (digits.length === 13 && digits.startsWith('521')) {
     return '52' + digits.slice(3);
+  }
+  if (digits.length === 12 && digits.startsWith('54') && !digits.startsWith('549')) {
+    return '549' + digits.slice(2);
   }
   return digits;
 }
