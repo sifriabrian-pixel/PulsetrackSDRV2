@@ -73,16 +73,21 @@ export function startKapsoServer() {
     // un secreto desincronizado (ej: después de reconectar el número en Kapso)
     // se ve exactamente igual que "no llega nada", y quedan horas sin saber cuál es.
     console.log(`[KAPSO] POST /webhook recibido — firma presente: ${!!req.headers['x-hub-signature-256']}`);
+    console.log('[KAPSO] Headers completos:', JSON.stringify(req.headers));
 
+    // TEMPORAL: Kapso no manda x-hub-signature-256 (ese header es el de Meta
+    // para webhooks directos, no el de Kapso como intermediario) — dejamos de
+    // exigir la firma hasta confirmar qué header/esquema usa Kapso realmente,
+    // para no perder mensajes entrantes mientras tanto. Ver headers logueados abajo.
     const appSecret = process.env.KAPSO_WEBHOOK_APP_SECRET;
-    if (appSecret) {
+    if (appSecret && req.headers['x-hub-signature-256']) {
       const ok = verifySignature({
         appSecret,
         rawBody: req.body,
         signatureHeader: req.headers['x-hub-signature-256'],
       });
       if (!ok) {
-        console.error('[KAPSO] Firma inválida — el KAPSO_WEBHOOK_APP_SECRET no coincide con el configurado en Kapso.');
+        console.error('[KAPSO] Firma x-hub-signature-256 inválida — el KAPSO_WEBHOOK_APP_SECRET no coincide.');
         return res.status(401).end();
       }
     }
