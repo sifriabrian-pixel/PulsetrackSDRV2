@@ -1,4 +1,4 @@
-import { updateProspect } from './db.js';
+import { updateProspect, logMessage } from './db.js';
 import { sendMessage, sendFase3Apertura } from './transport.js';
 import { sendHandoff } from './notifier.js';
 import {
@@ -22,7 +22,16 @@ function appendNote(existing, note) {
   return `${existing || ''}\n[${ts}] ${note}`.trim();
 }
 
+// Manda el mensaje y lo deja registrado en `messages` para que el dashboard
+// pueda mostrar la conversación completa (no solo el resumen de `notes`).
+async function send(prospect, jid, text) {
+  await sendMessage(jid, text);
+  logMessage(prospect.id, 'out', text);
+}
+
 export async function handleMessage(prospect, incomingText, fromJid) {
+  logMessage(prospect.id, 'in', incomingText);
+
   const { stage, country, dm_name, notes } = prospect;
   const pais = country || '[país]';
 
@@ -31,7 +40,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     const { role } = await detectRole(incomingText);
 
     if (role === 'BOT') {
-      await sendMessage(fromJid, FASE0_BOT_REPLY);
+      await send(prospect, fromJid, FASE0_BOT_REPLY);
       return;
     }
 
@@ -44,7 +53,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
         last_reply_at: new Date().toISOString(),
         notes: appendNote(notes, `Decisora detectada directamente en Fase 0`),
       });
-      await sendMessage(fromJid, FASE3_APERTURA_B());
+      await send(prospect, fromJid, FASE3_APERTURA_B());
       await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
       return;
     }
@@ -56,7 +65,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
       last_reply_at: new Date().toISOString(),
       notes: appendNote(notes, `Humano respondió apertura (rol: ${role})`),
     });
-    await sendMessage(fromJid, FASE1_INICIAL(pais));
+    await send(prospect, fromJid, FASE1_INICIAL(pais));
     await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
     return;
   }
@@ -79,9 +88,10 @@ export async function handleMessage(prospect, incomingText, fromJid) {
           last_reply_at: new Date().toISOString(),
           notes: appendNote(notes, `Recepción dio contacto: ${dmPhone} (${result.dm_name || 'sin nombre'})`),
         });
-        await sendMessage(fromJid, FASE2_CIERRE_PORTERO);
+        await send(prospect, fromJid, FASE2_CIERRE_PORTERO);
         // Número nuevo, sin conversación previa → mensaje frío, necesita template aprobado
         await sendFase3Apertura(dmJid, dmName, pais);
+        logMessage(prospect.id, 'out', '[Template de apertura a DM enviado]');
         await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
       } else {
         await updateProspect(prospect.id, {
@@ -91,14 +101,14 @@ export async function handleMessage(prospect, incomingText, fromJid) {
           last_reply_at: new Date().toISOString(),
           notes: appendNote(notes, `Recepción deriva internamente a la decisora`),
         });
-        await sendMessage(fromJid, FASE3_APERTURA(dmName, pais));
+        await send(prospect, fromJid, FASE3_APERTURA(dmName, pais));
         await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
       }
       return;
     }
 
     if (result.action === 'YO_AYUDO') {
-      await sendMessage(fromJid, FASE2_OBJECIONES.calificar_portero());
+      await send(prospect, fromJid, FASE2_OBJECIONES.calificar_portero());
       await updateProspect(prospect.id, {
         stage: 'FASE2_CALIFICANDO',
         last_message_at: new Date().toISOString(),
@@ -109,7 +119,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     }
 
     if (result.action === 'QUIERE_INFO') {
-      await sendMessage(fromJid, FASE2_OBJECIONES.que_se_trata(pais));
+      await send(prospect, fromJid, FASE2_OBJECIONES.que_se_trata(pais));
       await updateProspect(prospect.id, {
         stage: 'FASE2_OBJECION',
         last_message_at: new Date().toISOString(),
@@ -119,7 +129,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     }
 
     if (result.action === 'MANDAME_INFO') {
-      await sendMessage(fromJid, FASE2_OBJECIONES.mandame_info(pais));
+      await send(prospect, fromJid, FASE2_OBJECIONES.mandame_info(pais));
       await updateProspect(prospect.id, {
         stage: 'FASE2_OBJECION',
         last_message_at: new Date().toISOString(),
@@ -129,7 +139,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     }
 
     if (result.action === 'NO_CONTACTO') {
-      await sendMessage(fromJid, FASE2_OBJECIONES.no_contacto());
+      await send(prospect, fromJid, FASE2_OBJECIONES.no_contacto());
       await updateProspect(prospect.id, {
         stage: 'FASE2_PIDIENDO_NOMBRE',
         last_message_at: new Date().toISOString(),
@@ -139,7 +149,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     }
 
     if (result.action === 'PIDE_WEB') {
-      await sendMessage(fromJid, FASE2_OBJECIONES.piden_web());
+      await send(prospect, fromJid, FASE2_OBJECIONES.piden_web());
       await updateProspect(prospect.id, {
         stage: 'FASE2_OBJECION',
         last_message_at: new Date().toISOString(),
@@ -151,14 +161,14 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     if (result.action === 'YA_TIENEN' || result.action === 'REJECTED') {
       if (stage === 'FASE2_YA_TIENEN') {
         // Ya se le pidió el contacto una vez tras un "ya tienen" — insiste, cerramos
-        await sendMessage(fromJid, FASE2_OBJECIONES.ya_tienen_insiste());
+        await send(prospect, fromJid, FASE2_OBJECIONES.ya_tienen_insiste());
         await updateProspect(prospect.id, {
           stage: 'DISCARDED',
           notes: appendNote(notes, `Descartado: recepción insistió en "ya tenemos"/rechazo`),
         });
         console.log(`[DISCARDED] ${prospect.clinic_name} — recepción insistió`);
       } else {
-        await sendMessage(fromJid, FASE2_OBJECIONES.ya_tienen());
+        await send(prospect, fromJid, FASE2_OBJECIONES.ya_tienen());
         await updateProspect(prospect.id, {
           stage: 'FASE2_YA_TIENEN',
           last_message_at: new Date().toISOString(),
@@ -170,7 +180,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     }
 
     // UNKNOWN — fallback genérico
-    await sendMessage(fromJid, FASE2_OBJECIONES.fallback_generico());
+    await send(prospect, fromJid, FASE2_OBJECIONES.fallback_generico());
     await updateProspect(prospect.id, {
       stage: 'FASE2_OBJECION',
       last_message_at: new Date().toISOString(),
@@ -184,7 +194,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
       last_reply_at: new Date().toISOString(),
       notes: appendNote(notes, `Recepción respondió pedido de nombre: "${incomingText.slice(0, 80)}"`),
     });
-    await sendMessage(fromJid, FASE2_OBJECIONES.pide_instagram_email());
+    await send(prospect, fromJid, FASE2_OBJECIONES.pide_instagram_email());
     await updateProspect(prospect.id, {
       stage: 'FASE2_PIDIENDO_INSTAGRAM',
       last_message_at: new Date().toISOString(),
@@ -204,7 +214,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
       await sendHandoff({ ...prospect, stage: 'HANDED_OFF' });
       console.log(`[HANDOFF] ${prospect.clinic_name} — recepción dio Instagram/email, seguimiento manual`);
     } else {
-      await sendMessage(fromJid, FASE2_OBJECIONES.no_dan_nada(pais));
+      await send(prospect, fromJid, FASE2_OBJECIONES.no_dan_nada(pais));
       await updateProspect(prospect.id, {
         stage: 'DISCARDED',
         notes: appendNote(notes, `Descartado: recepción no dio ningún dato de contacto`),
@@ -219,17 +229,17 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     const { is_dm } = await classifyPorteroEsDM(incomingText);
 
     if (is_dm) {
-      await sendMessage(fromJid, FASE2_OBJECIONES.confirma_es_dm());
+      await send(prospect, fromJid, FASE2_OBJECIONES.confirma_es_dm());
       await updateProspect(prospect.id, {
         stage: 'FASE3_BIFURCACION_B',
         dm_jid: fromJid,
         last_reply_at: new Date().toISOString(),
         notes: appendNote(notes, `Recepción confirmó ser decisora — enviando pitch directo (MSG 1B)`),
       });
-      await sendMessage(fromJid, FASE3_APERTURA_B());
+      await send(prospect, fromJid, FASE3_APERTURA_B());
       await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
     } else {
-      await sendMessage(fromJid, FASE2_OBJECIONES.no_es_decisor());
+      await send(prospect, fromJid, FASE2_OBJECIONES.no_es_decisor());
       await updateProspect(prospect.id, {
         stage: 'FASE2_PORTERO',
         last_message_at: new Date().toISOString(),
@@ -249,7 +259,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     const result = await classifyDmReply(incomingText, context);
 
     if (result.action === 'REJECTED') {
-      await sendMessage(fromJid, FASE3_OBJECIONES.no_interesa(dm_name));
+      await send(prospect, fromJid, FASE3_OBJECIONES.no_interesa(dm_name));
       await updateProspect(prospect.id, {
         stage: 'DISCARDED',
         last_reply_at: new Date().toISOString(),
@@ -260,7 +270,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     }
 
     if (result.action === 'ASK_NUMBER') {
-      await sendMessage(fromJid, FASE3_OBJECIONES.como_conseguiste_numero());
+      await send(prospect, fromJid, FASE3_OBJECIONES.como_conseguiste_numero());
       await updateProspect(prospect.id, {
         stage: 'FASE3_OBJECION',
         last_reply_at: new Date().toISOString(),
@@ -271,7 +281,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     }
 
     if (result.action === 'MANDAME_INFO') {
-      await sendMessage(fromJid, FASE3_OBJECIONES.mandame_info());
+      await send(prospect, fromJid, FASE3_OBJECIONES.mandame_info());
       await updateProspect(prospect.id, {
         stage: 'FASE3_OBJECION',
         last_reply_at: new Date().toISOString(),

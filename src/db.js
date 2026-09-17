@@ -31,9 +31,38 @@ export function initDb() {
     CREATE INDEX IF NOT EXISTS idx_stage ON prospects(stage);
     CREATE INDEX IF NOT EXISTS idx_gatekeeper_jid ON prospects(gatekeeper_jid);
     CREATE INDEX IF NOT EXISTS idx_dm_jid ON prospects(dm_jid);
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      prospect_id INTEGER NOT NULL,
+      direction TEXT NOT NULL, -- 'in' | 'out'
+      text TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_messages_prospect ON messages(prospect_id);
   `);
 
   return db;
+}
+
+// Registra un mensaje (entrante o saliente) para poder mostrar la conversación
+// completa en el dashboard — `notes` solo guarda resúmenes de clasificación,
+// no el texto real de cada mensaje.
+export function logMessage(prospectId, direction, text) {
+  if (!prospectId || !text) return;
+  getDb().prepare(
+    `INSERT INTO messages (prospect_id, direction, text) VALUES (?, ?, ?)`
+  ).run(prospectId, direction, text);
+}
+
+export function getMessages(prospectId) {
+  return getDb().prepare(
+    `SELECT * FROM messages WHERE prospect_id = ? ORDER BY created_at ASC, id ASC`
+  ).all(prospectId);
+}
+
+export function getProspectById(id) {
+  return getDb().prepare(`SELECT * FROM prospects WHERE id = ?`).get(id);
 }
 
 export function getDb() {

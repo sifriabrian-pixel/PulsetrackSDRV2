@@ -5,6 +5,7 @@ import express from 'express';
 import { normalizeWebhook, verifySignature } from '@kapso/whatsapp-cloud-api/server';
 import { handleIncomingKapso, normalizePhone } from './kapsoRouter.js';
 import { getDb } from './db.js';
+import { registerDashboardRoutes } from './dashboard.js';
 
 // Cuando Meta confirma que un mensaje no se pudo entregar (número no tiene WhatsApp,
 // dejó de existir, etc.), lo marcamos en la DB para no dejar el prospecto colgado
@@ -54,6 +55,8 @@ export function startKapsoServer() {
   const app = express();
   // Railway asigna el puerto en process.env.PORT — WEBHOOK_PORT es solo para correrlo local
   const port = process.env.PORT || process.env.WEBHOOK_PORT || 3000;
+
+  registerDashboardRoutes(app);
 
   // Handshake de verificación (solo aplica si se suscribe directo a Meta)
   app.get('/webhook', (req, res) => {
