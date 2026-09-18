@@ -40,10 +40,10 @@ export async function detectRole(message) {
 Devolvé SOLO un JSON con este formato exacto:
 {"role": "DM" | "GATEKEEPER" | "BOT" | "UNKNOWN"}
 
-DM: habla como dueño/director/profesional independiente ("yo soy el dueño", "soy el director", "soy [nombre], en qué te ayudo", tono de decisor)
+DM: SOLO si se identifica explícitamente como dueño/director/profesional independiente ("soy el dueño", "soy la directora", "soy [nombre], psicólogo", "acá atiendo yo sola/o"). Un saludo genérico tipo "¿en qué te puedo ayudar?" o "hola, contame" NO alcanza como señal de DM por sí solo — mucha gente contesta así sin ser necesariamente quien decide.
 GATEKEEPER: recepcionista o secretaria que pregunta quién sos, te deriva, pide datos
 BOT: respuesta automática con menú numerado o mensaje de bienvenida genérico
-UNKNOWN: no se puede determinar con certeza`;
+UNKNOWN: cualquier saludo o respuesta genérica sin identificación explícita de rol — ante la duda, preferí UNKNOWN antes que DM.`;
 
   return classify(system, message);
 }
