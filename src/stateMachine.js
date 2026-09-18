@@ -5,13 +5,13 @@ import {
   detectRole,
   gatekeeperTurn,
   dmTurn,
+  generateDmOpening,
 } from './claude.js';
 import {
   FASE0_BOT_REPLY,
   FASE1_INICIAL,
   FASE2_CIERRE_PORTERO,
   FASE3_APERTURA,
-  FASE3_APERTURA_B,
 } from '../data/sequences.js';
 
 function appendNote(existing, note) {
@@ -46,7 +46,7 @@ export async function handleMessage(prospect, incomingText, fromJid) {
     }
 
     if (role === 'DM') {
-      // Quien respondió ya se identifica como decisora → pitch directo (MSG 1B, con disclosure de IA)
+      // Quien respondió ya se identifica como decisora → pitch directo generado en contexto
       await updateProspect(prospect.id, {
         stage: 'FASE3_BIFURCACION_B',
         dm_jid: fromJid,
@@ -54,7 +54,8 @@ export async function handleMessage(prospect, incomingText, fromJid) {
         last_reply_at: new Date().toISOString(),
         notes: appendNote(notes, `Decisora detectada directamente en Fase 0`),
       });
-      await send(prospect, fromJid, FASE3_APERTURA_B());
+      const opening = await generateDmOpening({ clinicName: prospect.clinic_name, pais, history, incomingText });
+      await send(prospect, fromJid, opening);
       await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
       return;
     }

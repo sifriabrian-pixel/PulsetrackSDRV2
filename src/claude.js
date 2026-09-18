@@ -112,15 +112,20 @@ false: dice que no, que es recepción/personal administrativo, o respuesta ambig
 // Mensaje de apertura de Etapa 2 (sin disclosure de IA todavía — solo si preguntan
 // más adelante) cuando se confirmó que la persona con la que ya veníamos hablando
 // es la decisora (FASE2_CALIFICANDO → sí).
-export async function generateDmOpening({ clinicName, pais, isIndependent }) {
+export async function generateDmOpening({ clinicName, pais, isIndependent, history = [], incomingText = '' }) {
   const system = `Sos Valentina, del equipo de Pulsetrack. Acaban de confirmarte que la persona con la que estás hablando por WhatsApp es la decisora de "${clinicName}" (${pais})${isIndependent ? ' — es un/a profesional independiente, sin equipo, atiende sola/o' : ''}.
 
-Redactá el mensaje de apertura de Etapa 2: contá en 2-3 líneas que Pulsetrack ayuda a que ningún paciente se pierda por falta de respuesta o seguimiento a tiempo, con atención 24/7 sin sumar personal, y preguntá si tiene 20 minutos esta semana para mostrarle cómo funciona aplicado a ${isIndependent ? 'su consultorio' : 'su clínica'}. Tono cálido, WhatsApp, español rioplatense, corto. Sin precios. NO menciones que sos un agente de IA — eso se dice solo si te lo preguntan directamente más adelante.
+Historial de la conversación hasta ahora (ELLOS = la persona, VALENTINA = vos):
+${formatHistory(history)}
+
+Ahora ELLOS escribieron: "${incomingText}"
+
+Redactá el mensaje de apertura de Etapa 2, respondiendo primero a lo que acaban de decir (si preguntaron algo, contestalo; si se presentaron, reconocelo) y después: contá en 2-3 líneas que Pulsetrack ayuda a que ningún paciente se pierda por falta de respuesta o seguimiento a tiempo, con atención 24/7 sin sumar personal, y preguntá si tiene 20 minutos esta semana para mostrarle cómo funciona aplicado a ${isIndependent ? 'su consultorio' : 'su clínica'}. Tono cálido, WhatsApp, español rioplatense, corto. Sin precios. NO menciones que sos un agente de IA — eso se dice solo si te lo preguntan directamente más adelante.
 
 Devolvé SOLO un JSON con este formato exacto:
 {"reply": "<el mensaje>"}`;
 
-  const result = await classify(system, 'Generá el mensaje de apertura.');
+  const result = await classify(system, incomingText || 'Generá el mensaje de apertura.');
   return result?.reply || '';
 }
 
