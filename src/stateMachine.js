@@ -110,16 +110,17 @@ export async function handleMessage(prospect, incomingText, fromJid) {
         });
         console.log(`[HANDOFF] ${prospect.clinic_name} — contacto por mail/IG: ${result.dm_email_or_social}`);
       } else {
-        // Derivación interna — sigue siendo el mismo chat, dentro de la ventana de 24hs.
+        // Derivación interna ("ya te paso con ella", "esperá un momento"): sigue el
+        // mismo chat, así que respondemos lo que redactó Valentina en contexto y
+        // seguimos en FASE2 — si la decisora aparece, gatekeeperTurn lo detecta.
+        await send(prospect, fromJid, result.reply);
         await updateProspect(prospect.id, {
-          stage: 'FASE3_BIFURCACION',
+          stage: 'FASE2_OBJECION',
           dm_name: result.dm_name || null,
-          dm_jid: fromJid,
           last_reply_at: new Date().toISOString(),
+          last_message_at: new Date().toISOString(),
           notes: appendNote(notes, `Recepción deriva internamente a la decisora`),
         });
-        await send(prospect, fromJid, FASE3_APERTURA(dmName, pais));
-        await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
       }
       return;
     }
