@@ -97,10 +97,20 @@ export async function handleMessage(prospect, incomingText, fromJid) {
         await sendFase3Apertura(dmJid, dmName, pais);
         logMessage(prospect.id, 'out', FASE3_APERTURA(dmName, pais));
         await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
+      } else if (result.dm_email_or_social) {
+        // Dieron solo mail/Instagram — no hay a quién escribirle por WhatsApp,
+        // así que se lo dejamos a Brian en el dashboard.
+        await send(prospect, fromJid, result.reply || FASE2_CIERRE_PORTERO);
+        await updateProspect(prospect.id, {
+          stage: 'HANDED_OFF',
+          dm_name: result.dm_name || null,
+          last_reply_at: new Date().toISOString(),
+          last_message_at: new Date().toISOString(),
+          notes: appendNote(notes, `Recepción dio contacto por mail/Instagram: ${result.dm_email_or_social} — Brian tiene que escribir ahí`),
+        });
+        console.log(`[HANDOFF] ${prospect.clinic_name} — contacto por mail/IG: ${result.dm_email_or_social}`);
       } else {
         // Derivación interna — sigue siendo el mismo chat, dentro de la ventana de 24hs.
-        // Este es el momento del disclosure de IA, así que se mantiene el texto
-        // aprobado en vez de generarlo libremente.
         await updateProspect(prospect.id, {
           stage: 'FASE3_BIFURCACION',
           dm_name: result.dm_name || null,
