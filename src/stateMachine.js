@@ -94,9 +94,15 @@ export async function handleMessage(prospect, incomingText, fromJid) {
           notes: appendNote(notes, `Recepción dio contacto: ${dmPhone} (${result.dm_name || 'sin nombre'})`),
         });
         await send(prospect, fromJid, result.reply || FASE2_CIERRE_PORTERO);
-        // Número nuevo, sin conversación previa → mensaje frío, necesita template aprobado
-        await sendFase3Apertura(dmJid, dmName, pais);
-        logMessage(prospect.id, 'out', FASE3_APERTURA(dmName, pais));
+        // Número nuevo, sin conversación previa → mensaje frío, necesita template aprobado.
+        // Si no hay template configurado, sendFase3Apertura devuelve null y no se manda
+        // nada — no hay que loguearlo como si hubiera salido.
+        const sent = await sendFase3Apertura(dmJid, dmName, pais);
+        if (sent) {
+          logMessage(prospect.id, 'out', FASE3_APERTURA(dmName, pais));
+        } else {
+          console.error(`[ALERTA] ${prospect.clinic_name} — no se pudo abrir el chat con ${dmName} (${dmPhone}): falta KAPSO_DM_TEMPLATE_NAME`);
+        }
         await updateProspect(prospect.id, { last_message_at: new Date().toISOString() });
       } else if (result.dm_email_or_social) {
         // Dieron solo mail/Instagram — no hay a quién escribirle por WhatsApp,
