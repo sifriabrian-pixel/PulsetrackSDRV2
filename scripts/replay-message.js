@@ -2,7 +2,7 @@
 // estados, para los casos en que el webhook lo ignoró (ej: tipo de mensaje no soportado
 // en su momento, como una tarjeta de contacto) y no queremos perder lo que ya respondió
 // el prospecto. Uso: node scripts/replay-message.js <prospect_id> "<texto del mensaje>"
-import { getProspectById } from '../src/db.js';
+import { initDb, getProspectById } from '../src/db.js';
 import { handleMessage } from '../src/stateMachine.js';
 
 const [, , idArg, text] = process.argv;
@@ -11,6 +11,7 @@ if (!idArg || !text) {
   process.exit(1);
 }
 
+initDb();
 const prospect = getProspectById(idArg);
 if (!prospect) {
   console.error(`No existe el prospecto ${idArg}`);
