@@ -124,6 +124,14 @@ export function startKapsoServer() {
         return;
       }
 
+      // Alguien comparte una tarjeta de contacto (ej: el número de la directora) en vez
+      // de escribirlo — Kapso ya lo manda armado como texto en kapso.content, así que lo
+      // tratamos igual que un mensaje de texto normal para que Claude lo pueda leer.
+      if (message.kapso?.direction === 'inbound' && message.type === 'contacts' && message.kapso?.content) {
+        await handleIncomingKapso(message.from, message.kapso.content, message.id);
+        return;
+      }
+
       if (message.kapso?.direction === 'outbound') {
         if (message.kapso?.status === 'failed') {
           const errorMsg = message.kapso?.error?.title || message.kapso?.error?.message;
